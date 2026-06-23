@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Interactive Chess Beginner Coach</title>
+<style>
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:Arial, sans-serif;
+    background:#101820;
+    color:white;
+    min-height:100vh;
+  }
+  .app{
+    display:grid;
+    grid-template-columns:260px 1fr 390px;
+    gap:18px;
+    padding:18px;
+    min-height:100vh;
+  }
+  .sidebar,.main,.coach{
+    background:#1f2d3a;
+    border-radius:16px;
+    padding:16px;
+    box-shadow:0 0 18px rgba(0,0,0,.35);
+  }
+  h1,h2,h3{margin-top:0}
+  .lesson-btn{
+    display:block;
+    width:100%;
+    text-align:left;
+    background:#0f1720;
+    color:white;
+    border:1px solid #31465b;
+    border-radius:10px;
+    padding:10px;
+    margin:8px 0;
+    cursor:pointer;
+  }
+  .lesson-btn.active{background:#2ecc71;color:#08120c;font-weight:bold}
+  .board{
+    display:grid;
+    grid-template-columns:repeat(8,66px);
+    grid-template-rows:repeat(8,66px);
+    border:5px solid #111;
+    width:max-content;
+    margin:14px 0;
+  }
+  .square{
+    width:66px;height:66px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:39px;
+    position:relative;
+    cursor:pointer;
+    user-select:none;
+  }
+  .light{background:#f0d9b5}
+  .dark{background:#b58863}
+  .coord{
+    position:absolute;
+    left:4px;
+    top:3px;
+    font-size:11px;
+    color:rgba(0,0,0,.55);
+    font-weight:bold;
+    pointer-events:none;
+  }
+  .dark .coord{color:rgba(255,255,255,.65)}
+  .coach-highlight{
+    box-shadow:inset 0 0 0 6px rgba(255,235,59,.95), 0 0 18px rgba(255,235,59,.75);
+    z-index:2;
+  }
+  .coach-highlight::after{
+    content:"";
+    position:absolute;
+    inset:18px;
+    border-radius:50%;
+    background:rgba(255,235,59,.75);
+    pointer-events:none;
+  }
+  .choice{box-shadow:inset 0 0 0 5px rgba(255,235,59,.65)}
+  .correct{box-shadow:inset 0 0 0 5px rgba(46,204,113,.95)}
+  .wrong{box-shadow:inset 0 0 0 5px rgba(231,76,60,.95)}
+  .white-piece{color:#fff8dc;text-shadow:2px 2px 4px #000;z-index:3}
+  .black-piece{color:#111;text-shadow:1px 1px 3px #fff;z-index:3}
+  .card{
+    background:#0f1720;
+    padding:14px;
+    border-radius:12px;
+    margin:12px 0;
+    line-height:1.45;
+  }
+  .chatlog{
+    background:#0f1720;
+    height:315px;
+    overflow-y:auto;
+    padding:12px;
+    border-radius:12px;
+    font-size:14px;
+    line-height:1.4;
+  }
+  .msg{margin-bottom:12px}
+  .you{color:#86efac}
+  .bot{color:#7dd3fc}
+  input{
+    width:100%;
+    padding:10px;
+    border-radius:10px;
+    border:0;
+    margin-top:10px;
+    font-size:15px;
+  }
+  button{
+    padding:10px 12px;
+    border:0;
+    border-radius:10px;
+    cursor:pointer;
+    font-weight:bold;
+    margin:6px 4px 0 0;
+  }
+  .ask{background:#2ecc71}
+  .small{background:#34495e;color:white}
+  .suggestions button{
+    background:#22364a;
+    color:white;
+    font-size:13px;
+    margin:5px 4px 0 0;
+  }
+  .feedback{
+    font-weight:bold;
+    min-height:24px;
+    margin-top:10px;
+  }
+  @media(max-width:1130px){
+    .app{grid-template-columns:1fr}
+    .board{grid-template-columns:repeat(8,44px);grid-template-rows:repeat(8,44px)}
+    .square{width:44px;height:44px;font-size:28px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <h2>Lessons</h2>
+    <div id="lessonList"></div>
+  </div>
+
+  <div class="main">
+    <h1 id="lessonTitle">Chess Coach</h1>
+    <div id="lessonText" class="card"></div>
+    <h3>Practice Scenario</h3>
+    <div id="scenarioText" class="card"></div>
+    <div id="board" class="board"></div>
+    <div id="feedback" class="feedback"></div>
+    <button class="small" onclick="showHint()">💡 Hint</button>
+    <button class="small" onclick="explainAgain()">🧠 Explain Again</button>
+    <button class="small" onclick="clearCoachHighlights()">🧽 Clear Highlights</button>
+    <button class="small" onclick="resetScenario()">↻ Reset Scenario</button>
+  </div>
+
+  <div class="coach">
+    <h2>💬 Interactive Coach</h2>
+    <div id="chatlog" class="chatlog"></div>
+    <input id="questionInput" placeholder="Try: Which square is e4? Show me the center. Where can the bishop move?" />
+    <button class="ask" onclick="askQuestion()">Ask</button>
+    <h3>Recommended Questions</h3>
+    <div id="suggestions" class="suggestions"></div>
+  </div>
+</div>
+
+<script>
+const symbols = {
+  wp:"♙",wr:"♖",wn:"♘",wb:"♗",wq:"♕",wk:"♔",
+  bp:"♟",br:"♜",bn:"♞",bb:"♝",bq:"♛",bk:"♚"
+};
+
+const lessons = [
+  {
+    id:"board",
+    title:"Board & Coordinates",
+    text:"The chessboard has 64 squares. Files go a-h from left to right. Ranks go 1-8 from bottom to top. White starts at the bottom.",
+    scenario:"Click the square e4. Learning coordinates helps you understand moves and lessons.",
+    pieces:{},
+    choices:{e4:"correct", d4:"near"},
+    best:"e4",
+    hint:"Find file e, then rank 4.",
+    explain:"e4 means the square on the e-file and 4th rank.",
+    questions:["Which square is e4?","Show me the center","What is a file?","What is a rank?","What does e4 mean?"]
+  },
+  {
+    id:"pawns",
+    title:"Pawns",
+    text:"Pawns move forward one square, can move two squares from their starting spot, and capture diagonally. Pawns are small, but they control important squares.",
+    scenario:"White to move. Choose the best pawn move. Look for a capture or a move that controls the center.",
+    pieces:{e2:"wp",d4:"wp",e5:"bp",c5:"bp",g7:"bp",e1:"wk",e8:"bk"},
+    choices:{e5:"correct", e4:"ok", d5:"bad"},
+    best:"dxe5",
+    hint:"A pawn can capture diagonally. The pawn on d4 can capture e5.",
+    explain:"dxe5 is best because your pawn captures a black pawn and gains material.",
+    questions:["Show me the pawn capture","Where can the pawn move?","What does diagonal mean?","How do pawns capture?","Why is dxe5 best?"]
+  },
+  {
+    id:"rooks",
+    title:"Rooks",
+    text:"Rooks move straight horizontally or vertically. They are powerful on open files and ranks.",
+    scenario:"White to move. Choose the rook move that wins material.",
+    pieces:{a1:"wr",a8:"br",e1:"wk",e8:"bk",a7:"bp"},
+    choices:{a7:"correct", a2:"bad", h1:"ok"},
+    best:"Rxa7",
+    hint:"The rook moves straight up the a-file.",
+    explain:"Rxa7 is best because the rook captures a pawn and stays active.",
+    questions:["Show the a-file","Where can the rook move?","What is a file?","What is an open file?"]
+  },
+  {
+    id:"bishops",
+    title:"Bishops",
+    text:"Bishops move diagonally as far as they want, if no piece blocks them. Each bishop stays on one color forever.",
+    scenario:"White to move. Find the bishop move that captures a free piece.",
+    pieces:{c1:"wb",h6:"bn",e1:"wk",e8:"bk",f4:"wp"},
+    choices:{h6:"correct", g5:"ok", d2:"bad"},
+    best:"Bxh6",
+    hint:"Trace the diagonal from c1 to h6.",
+    explain:"Bxh6 is best because your bishop captures a knight on the diagonal.",
+    questions:["Show me the diagonal","Where can the bishop move?","What does diagonal mean?","Why does a bishop stay on one color?"]
+  },
+  {
+    id:"knights",
+    title:"Knights",
+    text:"Knights move in an L shape: two squares one way and one square to the side. Knights can jump over pieces.",
+    scenario:"White to move. Pick the knight move that creates the best threat.",
+    pieces:{g1:"wn",e2:"wp",f3:"wp",e8:"bk",e1:"wk",f6:"bq"},
+    choices:{e2:"bad", h3:"bad", f3:"bad", e5:"correct"},
+    best:"Ne5",
+    hint:"Knights make forks and attacks by jumping in an L shape.",
+    explain:"Ne5 is a strong knight jump because it moves toward the center and can create threats.",
+    questions:["Show knight moves","What does L shape mean?","Can knights jump?","What is a fork?"]
+  },
+  {
+    id:"queens",
+    title:"Queens",
+    text:"The queen moves like a rook and bishop combined: straight or diagonal. It is the most powerful piece.",
+    scenario:"White to move. Find the queen move that attacks near the king.",
+    pieces:{h5:"wq",e1:"wk",e8:"bk",f7:"bp",g7:"bp"},
+    choices:{f7:"correct", h3:"bad", e2:"ok"},
+    best:"Qxf7",
+    hint:"Look at the black king on e8 and the weak f7 square.",
+    explain:"Qxf7 is strong because the queen attacks near the king and wins material.",
+    questions:["Where can the queen move?","Show queen lines","Why is the queen powerful?","Should I bring my queen out early?"]
+  },
+  {
+    id:"king",
+    title:"King",
+    text:"The king moves one square in any direction. You may never move your king into check. Protecting your king is the most important rule.",
+    scenario:"White to move. Move the king to the safest square.",
+    pieces:{e1:"wk",e8:"bk",e2:"bp",d2:"bp",f2:"bp"},
+    choices:{d1:"correct", e2:"bad", f1:"ok"},
+    best:"Kd1",
+    hint:"Do not move onto a square controlled by an enemy piece.",
+    explain:"A king must escape danger, but it cannot move into another attacked square.",
+    questions:["Where can the king move?","What is check?","Why can't the king be captured?","What is a legal king move?"]
+  },
+  {
+    id:"captures",
+    title:"Capturing",
+    text:"Capturing means moving your piece onto a square occupied by an enemy piece, removing that enemy piece from the board.",
+    scenario:"White to move. Choose the capture that wins the most valuable piece safely.",
+    pieces:{d4:"wn",f5:"bq",b5:"bp",e1:"wk",e8:"bk"},
+    choices:{f5:"correct", b5:"ok", c2:"bad"},
+    best:"Nxf5",
+    hint:"The queen is worth more than a pawn.",
+    explain:"Nxf5 is best because a knight captures a queen, winning a lot of material.",
+    questions:["Show the best capture","What does capture mean?","What is material?","Should I always capture?"]
+  },
+  {
+    id:"check",
+    title:"Check",
+    text:"Check means the king is under attack. If you are in check, your next move must get out of check.",
+    scenario:"White to move. Black is checking your king. Choose a move that escapes check.",
+    pieces:{e1:"wk",e8:"bk",e7:"br",d1:"wq"},
+    choices:{e2:"correct", f1:"ok", h5:"bad"},
+    best:"Qe2",
+    hint:"You can block a check, move the king, or capture the checking piece.",
+    explain:"Qe2 blocks the rook's attack on the e-file, so the king is no longer in check.",
+    questions:["Show the check line","How do I escape check?","Can I ignore check?","What does block mean?"]
+  },
+  {
+    id:"checkmate",
+    title:"Checkmate",
+    text:"Checkmate means the king is in check and there is no legal way to escape. The game ends immediately.",
+    scenario:"White to move. Find the checkmating move.",
+    pieces:{h5:"wq",c4:"wb",e1:"wk",e8:"bk",f7:"bp",g7:"bp"},
+    choices:{f7:"correct", h3:"bad", b5:"ok"},
+    best:"Qxf7",
+    hint:"Look for a move that attacks the king and leaves no escape.",
+    explain:"Checkmate is not capturing the king. It is trapping the king so it cannot escape.",
+    questions:["Show checkmate square","What is checkmate?","Is the king captured?","How do I find checkmate?"]
+  },
+  {
+    id:"opening",
+    title:"Opening Principles",
+    text:"In the opening, control the center, develop knights and bishops, castle, and do not move the same piece too many times.",
+    scenario:"White to move. Choose the best opening move.",
+    pieces:{e1:"wk",d1:"wq",b1:"wn",g1:"wn",c1:"wb",f1:"wb",e8:"bk"},
+    choices:{e4:"correct", a4:"bad", h3:"ok"},
+    best:"e4",
+    hint:"The center squares are e4, d4, e5, and d5.",
+    explain:"e4 is strong because it controls the center and opens lines for the bishop and queen.",
+    questions:["Show me the center","Which square is e4?","What is an opening?","Why develop pieces?"]
+  },
+  {
+    id:"tactics",
+    title:"Basic Tactics",
+    text:"Tactics are short tricks that win material or checkmate. Common tactics include forks, pins, skewers, discovered attacks, and back-rank mates.",
+    scenario:"White to move. Find the knight fork.",
+    pieces:{e5:"wn",d7:"bk",f7:"bq",e1:"wk"},
+    choices:{f7:"correct", d3:"bad", g4:"bad"},
+    best:"Nxf7",
+    hint:"A fork attacks two valuable pieces at the same time.",
+    explain:"Nxf7 forks the king and queen, meaning the knight creates two threats.",
+    questions:["Show the fork","What is a tactic?","What is a fork?","What is a pin?"]
+  }
+];
+
+const glossary = {
+  "diagonal":"Diagonal means a slanted line across squares of the same color, like a bishop moves.",
+  "diagonally":"Diagonally means moving along a diagonal, not straight up, down, left, or right.",
+  "forward":"Forward means toward the opponent's side. White moves toward rank 8. Black moves toward rank 1.",
+  "file":"A file is a vertical column, labeled a through h.",
+  "rank":"A rank is a horizontal row, numbered 1 through 8.",
+  "center":"The center is e4, d4, e5, and d5.",
+  "pawn":"A pawn moves forward and captures diagonally.",
+  "rook":"A rook moves straight up, down, left, or right.",
+  "bishop":"A bishop moves diagonally.",
+  "knight":"A knight moves in an L shape and can jump.",
+  "queen":"A queen moves straight or diagonally.",
+  "king":"The king moves one square and cannot move into check.",
+  "capture":"Capture means taking an opponent's piece by moving onto its square.",
+  "material":"Material means the value of pieces.",
+  "check":"Check means the king is under attack.",
+  "checkmate":"Checkmate means the king is in check and cannot escape.",
+  "opening":"The opening is the start of the game.",
+  "develop":"Develop means move a piece to a useful square.",
+  "fork":"A fork attacks two or more pieces at once.",
+  "pin":"A pin is when a piece should not move because something valuable behind it would be exposed.",
+  "best move":"The best move is the strongest move in the position."
+};
+
+let currentLesson = 0;
+let coachHighlights = [];
+
+function init(){
+  renderLessonButtons();
+  loadLesson(0);
+}
+
+function renderLessonButtons(){
+  const list = document.getElementById("lessonList");
+  list.innerHTML = "";
+  lessons.forEach((lesson,i)=>{
+    const btn = document.createElement("button");
+    btn.className = "lesson-btn" + (i===currentLesson?" active":"");
+    btn.textContent = (i+1)+". "+lesson.title;
+    btn.onclick = ()=>loadLesson(i);
+    list.appendChild(btn);
+  });
+}
+
+function loadLesson(i){
+  currentLesson = i;
+  coachHighlights = [];
+  renderLessonButtons();
+  const lesson = lessons[i];
+  document.getElementById("lessonTitle").textContent = lesson.title;
+  document.getElementById("lessonText").textContent = lesson.text;
+  document.getElementById("scenarioText").textContent = lesson.scenario;
+  document.getElementById("feedback").textContent = "";
+  renderBoard();
+  renderSuggestions();
+  document.getElementById("chatlog").innerHTML = "";
+  addBot("Welcome to " + lesson.title + ". I can answer questions and light up squares on the board. Try asking: Which square is e4?");
+}
+
+function renderBoard(){
+  const board = document.getElementById("board");
+  const lesson = lessons[currentLesson];
+  board.innerHTML = "";
+  for(let row=0; row<8; row++){
+    for(let col=0; col<8; col++){
+      const file = String.fromCharCode(97+col);
+      const rank = 8-row;
+      const sq = file+rank;
+      const div = document.createElement("div");
+      div.className = "square " + ((row+col)%2===0 ? "light":"dark");
+      div.dataset.square = sq;
+
+      const coord = document.createElement("span");
+      coord.className = "coord";
+      coord.textContent = sq;
+      div.appendChild(coord);
+
+      if(coachHighlights.includes(sq)) div.classList.add("coach-highlight");
+      if(lesson.choices[sq]) div.classList.add("choice");
+
+      const piece = lesson.pieces[sq];
+      if(piece){
+        const p = document.createElement("span");
+        p.textContent = symbols[piece];
+        p.className = piece[0]==="w" ? "white-piece":"black-piece";
+        div.appendChild(p);
+      }
+      div.onclick = ()=>handleSquareClick(sq, div);
+      board.appendChild(div);
+    }
+  }
+}
+
+function handleSquareClick(square, div){
+  const lesson = lessons[currentLesson];
+  const result = lesson.choices[square];
+  document.querySelectorAll(".square").forEach(s=>s.classList.remove("correct","wrong"));
+
+  if(result === "correct"){
+    div.classList.add("correct");
+    document.getElementById("feedback").textContent = "Correct! " + lesson.explain;
+    addBot("Correct! " + lesson.explain);
+  } else if(result === "ok" || result === "near"){
+    div.classList.add("correct");
+    document.getElementById("feedback").textContent = "That is playable, but not the best. " + lesson.explain;
+    addBot("That move is okay, but the best idea is: " + lesson.explain);
+  } else if(result === "bad"){
+    div.classList.add("wrong");
+    document.getElementById("feedback").textContent = "Not best. Try again. Hint: " + lesson.hint;
+    addBot("Not the best move. " + lesson.hint);
+  } else {
+    document.getElementById("feedback").textContent = "That square is not one of the answer choices. " + lesson.hint;
+  }
+}
+
+function renderSuggestions(){
+  const box = document.getElementById("suggestions");
+  box.innerHTML = "";
+  const extras = ["Which square is e4?","Show me the center","Show me the diagonal","Where can this piece move?"];
+  [...lessons[currentLesson].questions, ...extras].forEach(q=>{
+    const btn = document.createElement("button");
+    btn.textContent = q;
+    btn.onclick = ()=>askSpecific(q);
+    box.appendChild(btn);
+  });
+}
+
+function askSpecific(q){
+  document.getElementById("questionInput").value = q;
+  askQuestion();
+}
+
+function askQuestion(){
+  const input = document.getElementById("questionInput");
+  const q = input.value.trim();
+  if(!q) return;
+  addYou(q);
+  const result = answerQuestion(q);
+  if(result.highlights) {
+    coachHighlights = result.highlights;
+    renderBoard();
+  }
+  addBot(result.text);
+  input.value = "";
+}
+
+document.addEventListener("keydown", e=>{
+  if(e.key==="Enter" && document.activeElement.id==="questionInput") askQuestion();
+});
+
+function answerQuestion(question){
+  const q = question.toLowerCase();
+  const lesson = lessons[currentLesson];
+
+  const squareMatch = q.match(/\b([a-h][1-8])\b/i);
+  if(squareMatch){
+    const sq = squareMatch[1].toLowerCase();
+    return {
+      text: sq + " is highlighted on the board. The letter tells you the file, and the number tells you the rank.",
+      highlights:[sq]
+    };
+  }
+
+  if(q.includes("center")){
+    return {
+      text:"The center squares are e4, d4, e5, and d5. I highlighted them for you.",
+      highlights:["e4","d4","e5","d5"]
+    };
+  }
+
+  if(q.includes("diagonal")){
+    const diag = currentLesson === 3 ? ["c1","d2","e3","f4","g5","h6"] : ["a1","b2","c3","d4","e5","f6","g7","h8"];
+    return {
+      text:"A diagonal is a slanted line across the board. I highlighted one diagonal so you can see what it means.",
+      highlights:diag
+    };
+  }
+
+  if(q.includes("file")){
+    const file = (q.match(/\b[a-h]\b/) || ["e"])[0];
+    const squares = [];
+    for(let r=1;r<=8;r++) squares.push(file+r);
+    return {
+      text:"A file is a vertical column. I highlighted the " + file + "-file.",
+      highlights:squares
+    };
+  }
+
+  if(q.includes("rank")){
+    const rank = (q.match(/\b[1-8]\b/) || ["4"])[0];
+    const squares = [];
+    for(let c=0;c<8;c++) squares.push(String.fromCharCode(97+c)+rank);
+    return {
+      text:"A rank is a horizontal row. I highlighted rank " + rank + ".",
+      highlights:squares
+    };
+  }
+
+  if(q.includes("where can") || q.includes("show") || q.includes("moves") || q.includes("move")){
+    const highlights = getLessonMoveHighlights();
+    if(highlights.length){
+      return {
+        text:"I highlighted useful squares for this lesson. These show the important move idea in the current scenario.",
+        highlights
+      };
+    }
+  }
+
+  if(q.includes("best move") || q.includes("which move") || q.includes("what move")){
+    return {
+      text:"In this lesson, the best answer is " + lesson.best + ". " + lesson.explain,
+      highlights:Object.keys(lesson.choices).filter(s=>lesson.choices[s]==="correct")
+    };
+  }
+
+  let matches = [];
+  const sortedKeys = Object.keys(glossary).sort((a,b)=>b.length-a.length);
+  for(const word of sortedKeys){
+    if(q.includes(word)){
+      matches.push(glossary[word]);
+      if(matches.length >= 3) break;
+    }
+  }
+  if(matches.length) return {text:matches.join(" ")};
+
+  if(q.includes("explain") || q.includes("again")){
+    return {text:lesson.text + " In this scenario: " + lesson.explain};
+  }
+
+  return {text:"I can answer lesson questions and light up the board. Try asking: 'Which square is e4?', 'Show me the center', 'Show me the diagonal', or 'Where can the bishop move?'"};
+}
+
+function getLessonMoveHighlights(){
+  const id = lessons[currentLesson].id;
+  if(id==="pawns") return ["d4","e5","e2","e4"];
+  if(id==="rooks") return ["a1","a2","a3","a4","a5","a6","a7","a8","b1","c1","d1","e1","f1","g1","h1"];
+  if(id==="bishops") return ["c1","d2","e3","f4","g5","h6","b2","a3"];
+  if(id==="knights") return ["g1","e2","e5","f3","h3"];
+  if(id==="queens") return ["h5","f7","g6","e2","h3","a5","b5","c5","d5","e5","f5","g5"];
+  if(id==="king") return ["e1","d1","d2","e2","f2","f1"];
+  if(id==="captures") return ["d4","f5","b5"];
+  if(id==="check") return ["e7","e6","e5","e4","e3","e2","e1"];
+  if(id==="checkmate") return ["h5","f7","e8","c4"];
+  if(id==="opening") return ["e4","d4","e5","d5","b1","g1","c1","f1"];
+  if(id==="tactics") return ["e5","f7","d7"];
+  return ["e4","d4","e5","d5"];
+}
+
+function showHint(){
+  addBot("Hint: " + lessons[currentLesson].hint);
+}
+function explainAgain(){
+  addBot(lessons[currentLesson].text + " " + lessons[currentLesson].explain);
+}
+function clearCoachHighlights(){
+  coachHighlights = [];
+  renderBoard();
+}
+function resetScenario(){
+  document.getElementById("feedback").textContent = "";
+  coachHighlights = [];
+  renderBoard();
+}
+function addYou(text){
+  const div = document.createElement("div");
+  div.className = "msg you";
+  div.innerHTML = "<b>You:</b> " + escapeHTML(text);
+  document.getElementById("chatlog").appendChild(div);
+  scrollChat();
+}
+function addBot(text){
+  const div = document.createElement("div");
+  div.className = "msg bot";
+  div.innerHTML = "<b>Coach:</b> " + escapeHTML(text);
+  document.getElementById("chatlog").appendChild(div);
+  scrollChat();
+}
+function scrollChat(){
+  const c = document.getElementById("chatlog");
+  c.scrollTop = c.scrollHeight;
+}
+function escapeHTML(str){
+  return str.replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
+}
+init();
+</script>
+</body>
+</html>
