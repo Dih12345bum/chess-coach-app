@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Interactive Chess Beginner Coach</title>
+<title>Chess Beginner Coach - Puzzle Lessons</title>
 <style>
   *{box-sizing:border-box}
   body{
@@ -40,6 +40,7 @@
     cursor:pointer;
   }
   .lesson-btn.active{background:#2ecc71;color:#08120c;font-weight:bold}
+  .lesson-btn.done::after{content:" ✓";float:right;color:#2ecc71}
   .board{
     display:grid;
     grid-template-columns:repeat(8,66px);
@@ -80,7 +81,9 @@
     background:rgba(255,235,59,.75);
     pointer-events:none;
   }
-  .choice{box-shadow:inset 0 0 0 5px rgba(255,235,59,.65)}
+  .selected-from{
+    box-shadow:inset 0 0 0 5px rgba(52,152,219,.95);
+  }
   .correct{box-shadow:inset 0 0 0 5px rgba(46,204,113,.95)}
   .wrong{box-shadow:inset 0 0 0 5px rgba(231,76,60,.95)}
   .white-piece{color:#fff8dc;text-shadow:2px 2px 4px #000;z-index:3}
@@ -91,6 +94,37 @@
     border-radius:12px;
     margin:12px 0;
     line-height:1.45;
+  }
+  .scorebox{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin:10px 0;
+  }
+  .score-pill{
+    background:#0f1720;
+    border:1px solid #31465b;
+    border-radius:999px;
+    padding:8px 12px;
+    font-weight:bold;
+  }
+  .congrats{
+    display:none;
+    background:linear-gradient(135deg,#2ecc71,#f1c40f);
+    color:#06120a;
+    padding:16px;
+    border-radius:16px;
+    margin:14px 0;
+    box-shadow:0 0 22px rgba(46,204,113,.45);
+    font-weight:bold;
+  }
+  .congrats.show{display:block}
+  .next-arrow{
+    background:#101820;
+    color:white;
+    font-size:18px;
+    padding:12px 16px;
+    margin-top:10px;
   }
   .chatlog{
     background:#0f1720;
@@ -150,20 +184,29 @@
   <div class="main">
     <h1 id="lessonTitle">Chess Coach</h1>
     <div id="lessonText" class="card"></div>
-    <h3>Practice Scenario</h3>
+    <h3>Practice Puzzle</h3>
     <div id="scenarioText" class="card"></div>
     <div id="board" class="board"></div>
+    <div class="scorebox">
+      <div class="score-pill" id="scoreDisplay">Score: 0</div>
+      <div class="score-pill" id="lessonPointsDisplay">This lesson: 0</div>
+    </div>
     <div id="feedback" class="feedback"></div>
+    <div id="congratsBox" class="congrats">
+      🎉 Congratulations! You completed this lesson.
+      <div id="pointsEarnedText"></div>
+      <button class="next-arrow" onclick="moveToNextLesson()">Move on ➜</button>
+    </div>
     <button class="small" onclick="showHint()">💡 Hint</button>
     <button class="small" onclick="explainAgain()">🧠 Explain Again</button>
     <button class="small" onclick="clearCoachHighlights()">🧽 Clear Highlights</button>
-    <button class="small" onclick="resetScenario()">↻ Reset Scenario</button>
+    <button class="small" onclick="resetScenario()">↻ Reset Try</button>
   </div>
 
   <div class="coach">
     <h2>💬 Interactive Coach</h2>
     <div id="chatlog" class="chatlog"></div>
-    <input id="questionInput" placeholder="Try: Which square is e4? Show me the center. Where can the bishop move?" />
+    <input id="questionInput" placeholder="Try: Which square is e4? Show me the center. What is protected?" />
     <button class="ask" onclick="askQuestion()">Ask</button>
     <h3>Recommended Questions</h3>
     <div id="suggestions" class="suggestions"></div>
@@ -176,150 +219,190 @@ const symbols = {
   bp:"♟",br:"♜",bn:"♞",bb:"♝",bq:"♛",bk:"♚"
 };
 
+const pieceNames = {
+  p:"pawn", r:"rook", n:"knight", b:"bishop", q:"queen", k:"king"
+};
+
 const lessons = [
   {
     id:"board",
     title:"Board & Coordinates",
+    from:null,
     text:"The chessboard has 64 squares. Files go a-h from left to right. Ranks go 1-8 from bottom to top. White starts at the bottom.",
-    scenario:"Click the square e4. Learning coordinates helps you understand moves and lessons.",
+    scenario:"Click the square e4. The app will not show the answer first — you decide.",
     pieces:{},
-    choices:{e4:"correct", d4:"near"},
+    legal:["e4","d4"],
+    correct:["e4"],
+    ok:["d4"],
     best:"e4",
     hint:"Find file e, then rank 4.",
     explain:"e4 means the square on the e-file and 4th rank.",
-    questions:["Which square is e4?","Show me the center","What is a file?","What is a rank?","What does e4 mean?"]
+    questions:["Which square is e4?","Show me the center","What is a file?","What is a rank?"]
   },
   {
     id:"pawns",
-    title:"Pawns",
-    text:"Pawns move forward one square, can move two squares from their starting spot, and capture diagonally. Pawns are small, but they control important squares.",
-    scenario:"White to move. Choose the best pawn move. Look for a capture or a move that controls the center.",
-    pieces:{e2:"wp",d4:"wp",e5:"bp",c5:"bp",g7:"bp",e1:"wk",e8:"bk"},
-    choices:{e5:"correct", e4:"ok", d5:"bad"},
+    title:"Pawns: Best Capture",
+    from:"d4",
+    text:"Pawns move forward one square and capture diagonally. Sometimes a pawn has more than one capture, so choose the one that wins more.",
+    scenario:"White to move. The pawn on d4 can capture two pieces. Choose the best destination square.",
+    pieces:{d4:"wp",c5:"bp",e5:"bn",e1:"wk",h8:"bk"},
+    legal:["d5","c5","e5"],
+    correct:["e5"],
+    ok:["c5","d5"],
     best:"dxe5",
-    hint:"A pawn can capture diagonally. The pawn on d4 can capture e5.",
-    explain:"dxe5 is best because your pawn captures a black pawn and gains material.",
-    questions:["Show me the pawn capture","Where can the pawn move?","What does diagonal mean?","How do pawns capture?","Why is dxe5 best?"]
+    hint:"From d4, the pawn can capture c5 or e5. A knight is worth more than a pawn.",
+    explain:"dxe5 is best because the pawn legally captures the knight on e5. Capturing c5 is legal too, but it only wins a pawn.",
+    questions:["Show both pawn captures","Where can the pawn move?","What does diagonal mean?","Why is dxe5 best?"]
   },
   {
     id:"rooks",
-    title:"Rooks",
-    text:"Rooks move straight horizontally or vertically. They are powerful on open files and ranks.",
-    scenario:"White to move. Choose the rook move that wins material.",
-    pieces:{a1:"wr",a8:"br",e1:"wk",e8:"bk",a7:"bp"},
-    choices:{a7:"correct", a2:"bad", h1:"ok"},
-    best:"Rxa7",
-    hint:"The rook moves straight up the a-file.",
-    explain:"Rxa7 is best because the rook captures a pawn and stays active.",
-    questions:["Show the a-file","Where can the rook move?","What is a file?","What is an open file?"]
+    title:"Rooks: Clear Path",
+    from:"a1",
+    text:"Rooks move straight horizontally or vertically. They cannot jump over pieces, so the path must be clear.",
+    scenario:"White to move. The rook on a1 has two legal captures. No king is blocking the path. Choose the better capture.",
+    pieces:{a1:"wr",a7:"bp",h1:"bn",e2:"wk",h8:"bk"},
+    legal:["a2","a3","a4","a5","a6","a7","b1","c1","d1","e1","f1","g1","h1"],
+    correct:["h1"],
+    ok:["a7"],
+    best:"Rxh1",
+    hint:"The rook can capture a pawn on a7 or a knight on h1. A knight is worth more.",
+    explain:"Rxh1 is best because the rook legally moves across the first rank and captures a knight. Rxa7 is legal too, but only wins a pawn.",
+    questions:["Show both rook captures","Where can the rook move?","What blocks a rook?","What is a file?"]
   },
   {
     id:"bishops",
-    title:"Bishops",
-    text:"Bishops move diagonally as far as they want, if no piece blocks them. Each bishop stays on one color forever.",
-    scenario:"White to move. Find the bishop move that captures a free piece.",
-    pieces:{c1:"wb",h6:"bn",e1:"wk",e8:"bk",f4:"wp"},
-    choices:{h6:"correct", g5:"ok", d2:"bad"},
+    title:"Bishops: Better Diagonal Capture",
+    from:"c1",
+    text:"Bishops move diagonally. Each bishop stays on one color. If two captures are possible, compare piece value.",
+    scenario:"White to move. The bishop on c1 can capture two pieces. Choose the better destination square.",
+    pieces:{c1:"wb",a3:"bp",h6:"bn",e1:"wk",h8:"bk"},
+    legal:["b2","a3","d2","e3","f4","g5","h6"],
+    correct:["h6"],
+    ok:["a3"],
     best:"Bxh6",
-    hint:"Trace the diagonal from c1 to h6.",
-    explain:"Bxh6 is best because your bishop captures a knight on the diagonal.",
-    questions:["Show me the diagonal","Where can the bishop move?","What does diagonal mean?","Why does a bishop stay on one color?"]
+    hint:"Both a3 and h6 are diagonal from c1. The knight on h6 is worth more than the pawn on a3.",
+    explain:"Bxh6 is best because the bishop legally captures a knight. Bxa3 is legal too, but only wins a pawn.",
+    questions:["Show both bishop captures","Show me the diagonal","Where can the bishop move?","What does diagonal mean?"]
   },
   {
     id:"knights",
-    title:"Knights",
-    text:"Knights move in an L shape: two squares one way and one square to the side. Knights can jump over pieces.",
-    scenario:"White to move. Pick the knight move that creates the best threat.",
-    pieces:{g1:"wn",e2:"wp",f3:"wp",e8:"bk",e1:"wk",f6:"bq"},
-    choices:{e2:"bad", h3:"bad", f3:"bad", e5:"correct"},
-    best:"Ne5",
-    hint:"Knights make forks and attacks by jumping in an L shape.",
-    explain:"Ne5 is a strong knight jump because it moves toward the center and can create threats.",
-    questions:["Show knight moves","What does L shape mean?","Can knights jump?","What is a fork?"]
+    title:"Knights: Better Capture",
+    from:"e4",
+    text:"Knights move in an L shape and can jump over pieces. Knights are great at attacking two sides of the board.",
+    scenario:"White to move. The knight on e4 can capture two pieces. Choose the more valuable capture.",
+    pieces:{e4:"wn",c5:"bp",f6:"bq",e1:"wk",h8:"bk"},
+    legal:["c3","c5","d2","f2","g3","g5","d6","f6"],
+    correct:["f6"],
+    ok:["c5"],
+    best:"Nxf6",
+    hint:"From e4, the knight can jump to f6 or c5. The queen is worth much more than a pawn.",
+    explain:"Nxf6 is best because the knight legally captures the queen. Nxc5 is legal too, but only wins a pawn.",
+    questions:["Show both knight captures","Show knight moves","What does L shape mean?","Can knights jump?"]
   },
   {
     id:"queens",
-    title:"Queens",
-    text:"The queen moves like a rook and bishop combined: straight or diagonal. It is the most powerful piece.",
-    scenario:"White to move. Find the queen move that attacks near the king.",
-    pieces:{h5:"wq",e1:"wk",e8:"bk",f7:"bp",g7:"bp"},
-    choices:{f7:"correct", h3:"bad", e2:"ok"},
+    title:"Queens: Best Capture",
+    from:"h5",
+    text:"The queen moves straight or diagonally. Because she is powerful, you should choose queen moves carefully.",
+    scenario:"White to move. The queen can capture two pieces. Choose the better capture.",
+    pieces:{h5:"wq",f7:"br",h7:"bp",e1:"wk",h8:"bk"},
+    legal:["h1","h2","h3","h4","h6","h7","g5","f5","e5","d5","c5","b5","a5","g6","f7","g4","f3","e2","d1"],
+    correct:["f7"],
+    ok:["h7"],
     best:"Qxf7",
-    hint:"Look at the black king on e8 and the weak f7 square.",
-    explain:"Qxf7 is strong because the queen attacks near the king and wins material.",
-    questions:["Where can the queen move?","Show queen lines","Why is the queen powerful?","Should I bring my queen out early?"]
+    hint:"Qxf7 captures a rook. Qxh7 captures a pawn. Rooks are worth more.",
+    explain:"Qxf7 is best because the queen legally captures a rook. Qxh7 is legal too, but only wins a pawn.",
+    questions:["Show both queen captures","Where can the queen move?","Why is the queen powerful?"]
   },
   {
     id:"king",
-    title:"King",
-    text:"The king moves one square in any direction. You may never move your king into check. Protecting your king is the most important rule.",
-    scenario:"White to move. Move the king to the safest square.",
-    pieces:{e1:"wk",e8:"bk",e2:"bp",d2:"bp",f2:"bp"},
-    choices:{d1:"correct", e2:"bad", f1:"ok"},
+    title:"King: Safe Move",
+    from:"e1",
+    text:"The king moves one square in any direction, but it may not move into check.",
+    scenario:"White to move. Move the king to a safe square.",
+    pieces:{e1:"wk",e8:"br",h8:"bk"},
+    legal:["d1","f1","d2","e2","f2"],
+    correct:["d1"],
+    ok:["f1","d2","f2"],
     best:"Kd1",
-    hint:"Do not move onto a square controlled by an enemy piece.",
-    explain:"A king must escape danger, but it cannot move into another attacked square.",
-    questions:["Where can the king move?","What is check?","Why can't the king be captured?","What is a legal king move?"]
-  },
-  {
-    id:"captures",
-    title:"Capturing",
-    text:"Capturing means moving your piece onto a square occupied by an enemy piece, removing that enemy piece from the board.",
-    scenario:"White to move. Choose the capture that wins the most valuable piece safely.",
-    pieces:{d4:"wn",f5:"bq",b5:"bp",e1:"wk",e8:"bk"},
-    choices:{f5:"correct", b5:"ok", c2:"bad"},
-    best:"Nxf5",
-    hint:"The queen is worth more than a pawn.",
-    explain:"Nxf5 is best because a knight captures a queen, winning a lot of material.",
-    questions:["Show the best capture","What does capture mean?","What is material?","Should I always capture?"]
+    hint:"The rook on e8 attacks the e-file, so staying on the e-file is dangerous.",
+    explain:"Kd1 is best because the king steps off the rook's file and gets safe.",
+    questions:["Where can the king move?","What is check?","Why can't the king be captured?"]
   },
   {
     id:"check",
-    title:"Check",
-    text:"Check means the king is under attack. If you are in check, your next move must get out of check.",
-    scenario:"White to move. Black is checking your king. Choose a move that escapes check.",
-    pieces:{e1:"wk",e8:"bk",e7:"br",d1:"wq"},
-    choices:{e2:"correct", f1:"ok", h5:"bad"},
+    title:"Check: Block the Attack",
+    from:"d1",
+    text:"When your king is in check, you must fix it. You can move the king, capture the checking piece, or block the check.",
+    scenario:"White to move. The black rook on e7 checks the king on e1. Use the queen to block.",
+    pieces:{e1:"wk",d1:"wq",e7:"br",h8:"bk"},
+    legal:["e2","f3","g4","h5","d2","d3","d4","d5","d6","d7","d8","c1","b1","a1","c2","b3","a4","e1"],
+    correct:["e2"],
+    ok:["f3"],
     best:"Qe2",
-    hint:"You can block a check, move the king, or capture the checking piece.",
+    hint:"Put the queen between the rook and king on the e-file.",
     explain:"Qe2 blocks the rook's attack on the e-file, so the king is no longer in check.",
     questions:["Show the check line","How do I escape check?","Can I ignore check?","What does block mean?"]
   },
   {
     id:"checkmate",
-    title:"Checkmate",
-    text:"Checkmate means the king is in check and there is no legal way to escape. The game ends immediately.",
-    scenario:"White to move. Find the checkmating move.",
-    pieces:{h5:"wq",c4:"wb",e1:"wk",e8:"bk",f7:"bp",g7:"bp"},
-    choices:{f7:"correct", h3:"bad", b5:"ok"},
-    best:"Qxf7",
-    hint:"Look for a move that attacks the king and leaves no escape.",
-    explain:"Checkmate is not capturing the king. It is trapping the king so it cannot escape.",
-    questions:["Show checkmate square","What is checkmate?","Is the king captured?","How do I find checkmate?"]
+    title:"Checkmate in One",
+    from:"h5",
+    text:"Checkmate means the king is in check and has no legal escape. The king is not captured; the game ends.",
+    scenario:"White to move. Find the queen move that gives checkmate with help from the bishop.",
+    pieces:{h5:"wq",c4:"wb",e1:"wk",e8:"bk",f7:"bp",g7:"bp",h7:"bp"},
+    legal:["f7","h7","h8","e8","h1","h2","h3","h4","h6","g5","f5","e5","d5","c5","b5","a5","g6","g4","f3","e2","d1"],
+    correct:["f7"],
+    ok:["h7"],
+    best:"Qxf7#",
+    hint:"The queen can capture f7, and the bishop on c4 protects that square.",
+    explain:"Qxf7 is checkmate because the queen attacks the king and the bishop protects the queen on f7.",
+    questions:["Show checkmate square","What is checkmate?","Is the king captured?","How does the bishop help?"]
   },
   {
     id:"opening",
     title:"Opening Principles",
-    text:"In the opening, control the center, develop knights and bishops, castle, and do not move the same piece too many times.",
-    scenario:"White to move. Choose the best opening move.",
-    pieces:{e1:"wk",d1:"wq",b1:"wn",g1:"wn",c1:"wb",f1:"wb",e8:"bk"},
-    choices:{e4:"correct", a4:"bad", h3:"ok"},
-    best:"e4",
+    from:null,
+    text:"In the opening, control the center, develop knights and bishops, castle, and avoid moving the same piece too many times.",
+    scenario:"White to move. Choose the best opening square to control the center.",
+    pieces:{e1:"wk",d1:"wq",b1:"wn",g1:"wn",c1:"wb",f1:"wb",h8:"bk"},
+    legal:["e4","d4","c4","a4","h3","f3","c3"],
+    correct:["e4","d4"],
+    ok:["c4","f3","c3"],
+    best:"e4 or d4",
     hint:"The center squares are e4, d4, e5, and d5.",
-    explain:"e4 is strong because it controls the center and opens lines for the bishop and queen.",
+    explain:"e4 and d4 are best because they fight for the center and open lines for pieces.",
     questions:["Show me the center","Which square is e4?","What is an opening?","Why develop pieces?"]
   },
   {
-    id:"tactics",
-    title:"Basic Tactics",
-    text:"Tactics are short tricks that win material or checkmate. Common tactics include forks, pins, skewers, discovered attacks, and back-rank mates.",
-    scenario:"White to move. Find the knight fork.",
-    pieces:{e5:"wn",d7:"bk",f7:"bq",e1:"wk"},
-    choices:{f7:"correct", d3:"bad", g4:"bad"},
-    best:"Nxf7",
-    hint:"A fork attacks two valuable pieces at the same time.",
-    explain:"Nxf7 forks the king and queen, meaning the knight creates two threats.",
-    questions:["Show the fork","What is a tactic?","What is a fork?","What is a pin?"]
+    id:"protected",
+    title:"Protected Pieces",
+    from:"d4",
+    text:"A protected piece is defended by another piece. Moving to a protected square is safer because if your opponent captures you, your other piece can capture back.",
+    scenario:"White to move. Move the knight to the best protected square. This is not a capture lesson — choose a safe, useful square.",
+    pieces:{g1:"wk",e1:"wq",b3:"wb",d4:"wn",g2:"wp",h8:"bk",a8:"br",b5:"bb",f6:"bn",c6:"bb",e5:"bp",a7:"bp",f7:"bp",g7:"bp",h7:"bp"},
+    legal:["b3","b5","c2","c6","e2","e6","f3","f5"],
+    correct:["f3"],
+    ok:["e2","f5"],
+    best:"Nf3",
+    hint:"Nf3 is a safe developing move. The knight is protected and helps your king side.",
+    explain:"Nf3 is best because the knight moves to a protected, useful square instead of grabbing random material or moving into danger.",
+    questions:["What does protected mean?","Why is f3 good?","Show protected squares","What is a defended piece?"]
+  },
+  {
+    id:"forcecapture",
+    title:"Protected Attack / Forced Response",
+    from:"e4",
+    text:"A forcing move makes your opponent respond. Checks, captures, and serious threats are forcing moves.",
+    scenario:"White to move. Find the queen move that gives checkmate with help from the bishop.",
+    pieces:{e1:"wk",e4:"wq",d3:"wb",g8:"bk",f8:"br",f7:"bp",g7:"bp",h7:"bp"},
+    legal:["e8","e7","e6","e5","f5","g6","h7","d5","c6","b7","a8","f4","g4","h4","d4","c4","b4","a4","e3","e2","f3","g2","h1","d3"],
+    correct:["e8"],
+    ok:["f5","h7"],
+    best:"Qe8#",
+    hint:"The queen can move from e4 to e8 on the same file. The bishop helps cover escape squares.",
+    explain:"Qe8 is checkmate because the queen attacks the king and the bishop helps cover important escape squares.",
+    questions:["Show the checkmate square","Why is Qe8 checkmate?","What is a forcing move?","How does the bishop help?"]
   }
 ];
 
@@ -344,11 +427,18 @@ const glossary = {
   "develop":"Develop means move a piece to a useful square.",
   "fork":"A fork attacks two or more pieces at once.",
   "pin":"A pin is when a piece should not move because something valuable behind it would be exposed.",
+  "protected":"Protected means defended by another piece. If that piece is captured, your other piece can capture back.",
+  "defended":"Defended means protected by another piece.",
+  "forcing":"Forcing means your opponent must respond, usually because of check, a capture, or a serious threat.",
   "best move":"The best move is the strongest move in the position."
 };
 
 let currentLesson = 0;
 let coachHighlights = [];
+let totalScore = 0;
+let lessonAttempts = 0;
+let lessonCompleted = false;
+let completedLessons = {};
 
 function init(){
   renderLessonButtons();
@@ -360,7 +450,7 @@ function renderLessonButtons(){
   list.innerHTML = "";
   lessons.forEach((lesson,i)=>{
     const btn = document.createElement("button");
-    btn.className = "lesson-btn" + (i===currentLesson?" active":"");
+    btn.className = "lesson-btn" + (i===currentLesson?" active":"") + (completedLessons[i] ? " done" : "");
     btn.textContent = (i+1)+". "+lesson.title;
     btn.onclick = ()=>loadLesson(i);
     list.appendChild(btn);
@@ -370,16 +460,20 @@ function renderLessonButtons(){
 function loadLesson(i){
   currentLesson = i;
   coachHighlights = [];
+  lessonAttempts = 0;
+  lessonCompleted = !!completedLessons[i];
   renderLessonButtons();
   const lesson = lessons[i];
   document.getElementById("lessonTitle").textContent = lesson.title;
   document.getElementById("lessonText").textContent = lesson.text;
   document.getElementById("scenarioText").textContent = lesson.scenario;
   document.getElementById("feedback").textContent = "";
+  updateScoreDisplay();
+  hideCongrats();
   renderBoard();
   renderSuggestions();
   document.getElementById("chatlog").innerHTML = "";
-  addBot("Welcome to " + lesson.title + ". I can answer questions and light up squares on the board. Try asking: Which square is e4?");
+  addBot("Welcome to " + lesson.title + ". I will not show the answer choices on the board. You choose the best destination square.");
 }
 
 function renderBoard(){
@@ -401,7 +495,7 @@ function renderBoard(){
       div.appendChild(coord);
 
       if(coachHighlights.includes(sq)) div.classList.add("coach-highlight");
-      if(lesson.choices[sq]) div.classList.add("choice");
+      if(lesson.from === sq) div.classList.add("selected-from");
 
       const piece = lesson.pieces[sq];
       if(piece){
@@ -410,6 +504,7 @@ function renderBoard(){
         p.className = piece[0]==="w" ? "white-piece":"black-piece";
         div.appendChild(p);
       }
+
       div.onclick = ()=>handleSquareClick(sq, div);
       board.appendChild(div);
     }
@@ -417,31 +512,96 @@ function renderBoard(){
 }
 
 function handleSquareClick(square, div){
+  if(lessonCompleted) {
+    addBot("You already completed this lesson. Click Move on ➜ to continue.");
+    return;
+  }
+
   const lesson = lessons[currentLesson];
-  const result = lesson.choices[square];
+
+  if(lesson.from && square === lesson.from){
+    addBot("That is the piece you are moving. Now click the destination square.");
+    return;
+  }
+
+  if(!lesson.legal.includes(square)){
+    lessonAttempts++;
+    div.classList.add("wrong");
+    document.getElementById("feedback").textContent = "That move is not legal from this position. Try again. " + lesson.hint;
+    addBot("That destination is not a legal move from the current position. " + lesson.hint);
+    updateScoreDisplay();
+    return;
+  }
+
+  lessonAttempts++;
   document.querySelectorAll(".square").forEach(s=>s.classList.remove("correct","wrong"));
 
-  if(result === "correct"){
+  if(lesson.correct.includes(square)){
     div.classList.add("correct");
+
+    const points = getPointsForAttempts(lessonAttempts);
+    totalScore += points;
+    completedLessons[currentLesson] = points;
+    lessonCompleted = true;
+
     document.getElementById("feedback").textContent = "Correct! " + lesson.explain;
     addBot("Correct! " + lesson.explain);
-  } else if(result === "ok" || result === "near"){
-    div.classList.add("correct");
-    document.getElementById("feedback").textContent = "That is playable, but not the best. " + lesson.explain;
-    addBot("That move is okay, but the best idea is: " + lesson.explain);
-  } else if(result === "bad"){
+    showCongrats(points);
+    updateScoreDisplay();
+    renderLessonButtons();
+  } else if(lesson.ok.includes(square)){
     div.classList.add("wrong");
-    document.getElementById("feedback").textContent = "Not best. Try again. Hint: " + lesson.hint;
-    addBot("Not the best move. " + lesson.hint);
+    document.getElementById("feedback").textContent = "Legal, but not the best. Try again. " + lesson.hint;
+    addBot("That move is legal, but not the best answer. " + lesson.hint);
+    updateScoreDisplay();
   } else {
-    document.getElementById("feedback").textContent = "That square is not one of the answer choices. " + lesson.hint;
+    div.classList.add("wrong");
+    document.getElementById("feedback").textContent = "Legal, but not the idea here. Try again. " + lesson.hint;
+    addBot("That move is legal, but it does not solve the puzzle. " + lesson.hint);
+    updateScoreDisplay();
+  }
+}
+
+function getPointsForAttempts(attempts){
+  if(attempts === 1) return 50;
+  if(attempts === 2) return 30;
+  return 10;
+}
+
+function showCongrats(points){
+  const box = document.getElementById("congratsBox");
+  const text = document.getElementById("pointsEarnedText");
+  text.textContent = "You earned " + points + " points for this lesson.";
+  box.classList.add("show");
+  addBot("🎉 Congratulations! You completed the lesson and earned " + points + " points.");
+}
+
+function hideCongrats(){
+  document.getElementById("congratsBox").classList.remove("show");
+  document.getElementById("pointsEarnedText").textContent = "";
+}
+
+function updateScoreDisplay(){
+  const possible = lessonAttempts === 0 ? 50 : getPointsForAttempts(lessonAttempts + 1);
+  document.getElementById("scoreDisplay").textContent = "Score: " + totalScore;
+  document.getElementById("lessonPointsDisplay").textContent = lessonCompleted
+    ? "This lesson: " + completedLessons[currentLesson]
+    : "This lesson: up to " + possible;
+}
+
+function moveToNextLesson(){
+  if(currentLesson < lessons.length - 1){
+    loadLesson(currentLesson + 1);
+  } else {
+    addBot("🏆 Amazing! You finished all the lessons. Final score: " + totalScore + " points.");
+    document.getElementById("pointsEarnedText").textContent = "You finished every lesson! Final score: " + totalScore + " points.";
   }
 }
 
 function renderSuggestions(){
   const box = document.getElementById("suggestions");
   box.innerHTML = "";
-  const extras = ["Which square is e4?","Show me the center","Show me the diagonal","Where can this piece move?"];
+  const extras = ["Which square is e4?","Show me the center","Show legal moves","What is the best move?"];
   [...lessons[currentLesson].questions, ...extras].forEach(q=>{
     const btn = document.createElement("button");
     btn.textContent = q;
@@ -481,61 +641,44 @@ function answerQuestion(question){
   if(squareMatch){
     const sq = squareMatch[1].toLowerCase();
     return {
-      text: sq + " is highlighted on the board. The letter tells you the file, and the number tells you the rank.",
+      text: sq + " is highlighted on the board. The letter is the file and the number is the rank.",
       highlights:[sq]
     };
   }
 
   if(q.includes("center")){
-    return {
-      text:"The center squares are e4, d4, e5, and d5. I highlighted them for you.",
-      highlights:["e4","d4","e5","d5"]
-    };
+    return { text:"The center squares are e4, d4, e5, and d5. I highlighted them.", highlights:["e4","d4","e5","d5"] };
+  }
+
+  if(q.includes("legal") || q.includes("where can") || q.includes("show moves")){
+    return { text:"I highlighted the legal destination squares for this puzzle. The best one is still up to you to find.", highlights:lesson.legal };
+  }
+
+  if(q.includes("best move") || q.includes("which move") || q.includes("what move")){
+    return { text:"I won't give it away immediately, but the goal is: " + lesson.hint, highlights:lesson.from ? [lesson.from] : [] };
+  }
+
+  if(q.includes("capture") && (q.includes("both") || q.includes("show"))){
+    const caps = lesson.legal.filter(s => lesson.pieces[s] && lesson.pieces[s][0] === "b");
+    return { text:"I highlighted the legal captures in this puzzle. Compare the value of the pieces.", highlights:caps };
   }
 
   if(q.includes("diagonal")){
-    const diag = currentLesson === 3 ? ["c1","d2","e3","f4","g5","h6"] : ["a1","b2","c3","d4","e5","f6","g7","h8"];
-    return {
-      text:"A diagonal is a slanted line across the board. I highlighted one diagonal so you can see what it means.",
-      highlights:diag
-    };
+    return { text:"A diagonal is a slanted line. I highlighted one diagonal.", highlights:["a1","b2","c3","d4","e5","f6","g7","h8"] };
   }
 
   if(q.includes("file")){
     const file = (q.match(/\b[a-h]\b/) || ["e"])[0];
     const squares = [];
     for(let r=1;r<=8;r++) squares.push(file+r);
-    return {
-      text:"A file is a vertical column. I highlighted the " + file + "-file.",
-      highlights:squares
-    };
+    return { text:"A file is a vertical column. I highlighted the " + file + "-file.", highlights:squares };
   }
 
   if(q.includes("rank")){
     const rank = (q.match(/\b[1-8]\b/) || ["4"])[0];
     const squares = [];
     for(let c=0;c<8;c++) squares.push(String.fromCharCode(97+c)+rank);
-    return {
-      text:"A rank is a horizontal row. I highlighted rank " + rank + ".",
-      highlights:squares
-    };
-  }
-
-  if(q.includes("where can") || q.includes("show") || q.includes("moves") || q.includes("move")){
-    const highlights = getLessonMoveHighlights();
-    if(highlights.length){
-      return {
-        text:"I highlighted useful squares for this lesson. These show the important move idea in the current scenario.",
-        highlights
-      };
-    }
-  }
-
-  if(q.includes("best move") || q.includes("which move") || q.includes("what move")){
-    return {
-      text:"In this lesson, the best answer is " + lesson.best + ". " + lesson.explain,
-      highlights:Object.keys(lesson.choices).filter(s=>lesson.choices[s]==="correct")
-    };
+    return { text:"A rank is a horizontal row. I highlighted rank " + rank + ".", highlights:squares };
   }
 
   let matches = [];
@@ -549,26 +692,10 @@ function answerQuestion(question){
   if(matches.length) return {text:matches.join(" ")};
 
   if(q.includes("explain") || q.includes("again")){
-    return {text:lesson.text + " In this scenario: " + lesson.explain};
+    return {text:lesson.text + " In this puzzle: " + lesson.explain};
   }
 
-  return {text:"I can answer lesson questions and light up the board. Try asking: 'Which square is e4?', 'Show me the center', 'Show me the diagonal', or 'Where can the bishop move?'"};
-}
-
-function getLessonMoveHighlights(){
-  const id = lessons[currentLesson].id;
-  if(id==="pawns") return ["d4","e5","e2","e4"];
-  if(id==="rooks") return ["a1","a2","a3","a4","a5","a6","a7","a8","b1","c1","d1","e1","f1","g1","h1"];
-  if(id==="bishops") return ["c1","d2","e3","f4","g5","h6","b2","a3"];
-  if(id==="knights") return ["g1","e2","e5","f3","h3"];
-  if(id==="queens") return ["h5","f7","g6","e2","h3","a5","b5","c5","d5","e5","f5","g5"];
-  if(id==="king") return ["e1","d1","d2","e2","f2","f1"];
-  if(id==="captures") return ["d4","f5","b5"];
-  if(id==="check") return ["e7","e6","e5","e4","e3","e2","e1"];
-  if(id==="checkmate") return ["h5","f7","e8","c4"];
-  if(id==="opening") return ["e4","d4","e5","d5","b1","g1","c1","f1"];
-  if(id==="tactics") return ["e5","f7","d7"];
-  return ["e4","d4","e5","d5"];
+  return {text:"I can answer lesson questions and interact with the board. Try asking: 'Show legal moves', 'Which square is e4?', 'Show both captures', or 'What does protected mean?'"};
 }
 
 function showHint(){
@@ -582,6 +709,10 @@ function clearCoachHighlights(){
   renderBoard();
 }
 function resetScenario(){
+  if(lessonCompleted){
+    addBot("This lesson is already complete. Click Move on ➜ to continue.");
+    return;
+  }
   document.getElementById("feedback").textContent = "";
   coachHighlights = [];
   renderBoard();
@@ -607,6 +738,7 @@ function scrollChat(){
 function escapeHTML(str){
   return str.replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m]));
 }
+
 init();
 </script>
 </body>
